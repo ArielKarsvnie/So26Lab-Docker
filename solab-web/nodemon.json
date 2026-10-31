@@ -1,0 +1,4 @@
+{
+  "watch": ["server.js", "lib", "models", "config"],
+  "ext": "js,json"
+}

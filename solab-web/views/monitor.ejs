@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitor de recursos</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<%
+  const memBase = stats.memoria.limite !== null ? stats.memoria.limite : stats.host.memTotal;
+  const memPct = Math.min(100, (stats.memoria.uso / memBase) * 100);
+  const cpuBase = (stats.cpu.limite !== null ? stats.cpu.limite : stats.host.cpus) * 100;
+  const cpuPct = Math.min(100, (stats.cpu.porcentaje / cpuBase) * 100);
+%>
+<header>
+  <h1>Título de la página</h1>
+  <p class="sub">Estado del sistema visto desde adentro del contenedor. Se actualiza cada 2 segundos.</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Identidad del proceso</h2>
+    <dl>
+      <dt>Hostname</dt><dd id="hostname"><%= stats.hostname %></dd>
+      <dt>¿Dentro de un contenedor?</dt><dd id="enContenedor"><%= stats.enContenedor ? 'Sí' : 'No (ejecución directa en el host)' %></dd>
+      <dt>PID / PPID</dt><dd><span id="pid"><%= stats.pid %></span> / <span id="ppid"><%= stats.ppid %></span></dd>
+      <dt>Usuario</dt><dd id="usuario"><%= stats.usuario.nombre || '?' %> (uid <%= stats.usuario.uid %>, gid <%= stats.usuario.gid %>)</dd>
+      <dt>Node.js</dt><dd><%= stats.node %></dd>
+      <dt>Tiempo activo</dt><dd id="uptime"><%= fmt.duracion(stats.uptimeProceso) %></dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Recursos</h2>
+    <div class="medidor">
+      <div class="medidor-t"><span>Memoria</span><span id="memTexto"><%= fmt.bytes(stats.memoria.uso) %> de <%= stats.memoria.limite !== null ? fmt.bytes(stats.memoria.limite) + ' (límite del contenedor)' : fmt.bytes(stats.host.memTotal) + ' (sin límite: memoria total del host)' %></span></div>
+      <div class="barra"><div id="memBarra" style="width: <%= memPct.toFixed(1) %>%"></div></div>
+    </div>
+    <div class="medidor">
+      <div class="medidor-t"><span>CPU</span><span id="cpuTexto"><%= stats.cpu.porcentaje.toFixed(1) %> % de una CPU · <%= stats.cpu.limite !== null ? 'límite ' + fmt.cpus(stats.cpu.limite) : 'sin límite (' + stats.host.cpus + ' CPU del host)' %></span></div>
+      <div class="barra"><div id="cpuBarra" style="width: <%= cpuPct.toFixed(1) %>%"></div></div>
+    </div>
+    <dl>
+      <dt>CPU que ve Node (<code>os.cpus()</code>)</dt><dd id="hostCpus"><%= stats.host.cpus %></dd>
+      <dt>Memoria total que ve Node (<code>os.totalmem()</code>)</dt><dd id="hostMem"><%= fmt.bytes(stats.host.memTotal) %></dd>
+      <dt>Versión de cgroups</dt><dd><%= stats.cgroup.version || 'no disponible' %></dd>
+      <dt>Carga (1 / 5 / 15 min)</dt><dd id="loadavg"><%= stats.carga.map((n) => n.toFixed(2)).join(' / ') %></dd>
+    </dl>
+    <p class="nota">Compare estos valores con los de <code>docker stats</code>. Si el contenedor tiene límites, el medidor usa el límite; si no, usa los del host.</p>
+  </section>
+
+  <section class="card">
+    <h2>Generar carga</h2>
+    <p class="nota">Para ver cómo reacciona el contenedor a sus límites (<code>--memory</code>, <code>--cpus</code>). Con un límite de memoria bajo, reservar de más hace que el kernel mate el proceso.</p>
+    <div class="acciones">
+      <button type="button" data-accion="/api/carga/cpu?segundos=10">Ocupar 1 CPU (10 s)</button>
+      <button type="button" data-accion="/api/carga/memoria?mb=50">Reservar 50 MB</button>
+      <button type="button" data-accion="/api/carga/liberar" class="sec">Liberar memoria</button>
+    </div>
+    <p id="cargaEstado" class="nota">Hilos de CPU activos: <%= stats.cargaGenerada.hilosCpu %> · Memoria reservada: <%= stats.cargaGenerada.memoriaReservadaMB.toFixed(0) %> MB</p>
+  </section>
+
+  <section class="card">
+    <h2>Namespaces del proceso</h2>
+    <table>
+      <thead><tr><th>Tipo</th><th>Identificador</th></tr></thead>
+      <tbody id="namespaces">
+        <% Object.entries(stats.namespaces).forEach(([tipo, valor]) => { %>
+          <tr><td><%= tipo %></td><td><code><%= valor || 'no disponible' %></code></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card ancha">
+    <h2>Procesos visibles (<span id="cantProcesos"><%= stats.procesos.length %></span>)</h2>
+    <table>
+      <thead><tr><th>PID</th><th>PPID</th><th>Estado</th><th>Comando</th></tr></thead>
+      <tbody id="procesos">
+        <% stats.procesos.forEach((p) => { %>
+          <tr><td><%= p.pid %></td><td><%= p.ppid %></td><td><%= p.estado %></td><td><code><%= p.cmd %></code></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card ancha">
+    <h2>Historial de muestras</h2>
+    <p class="estado-db <%= db.conectada ? 'ok' : 'error' %>">
+      <%= db.conectada ? 'Base de datos conectada' : 'Sin conexión a la base de datos en ' + db.host + ':' + db.puerto %>
+    </p>
+
+    <form action="/muestras" method="post" class="formulario">
+      <input type="text" name="nota" maxlength="120" placeholder="Nota opcional (por ejemplo: sin límites)">
+      <button type="submit" <%= db.conectada ? '' : 'disabled' %>>Guardar muestra</button>
+    </form>
+
+    <% if (muestras.length === 0) { %>
+      <p class="vacio">Todavía no hay muestras.</p>
+    <% } else { %>
+      <table>
+        <thead><tr><th>Fecha</th><th>Nota</th><th>Hostname</th><th>Memoria</th><th>CPU</th><th>Procesos</th><th></th></tr></thead>
+        <tbody>
+          <% muestras.forEach((m) => { %>
+            <tr>
+              <td><%= fmt.fecha(m.creada) %></td>
+              <td><%= m.nota || '—' %></td>
+              <td><code><%= m.hostname %></code></td>
+              <td><%= fmt.bytes(m.memUso) %> / <%= fmt.bytes(m.memLimite) %></td>
+              <td><%= m.cpuPorcentaje.toFixed(1) %> % / <%= fmt.cpus(m.cpuLimite) %></td>
+              <td><%= m.procesos %></td>
+              <td>
+                <form action="/muestras/<%= m._id %>/eliminar" method="post"><button type="submit" class="sec chico">Eliminar</button></form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <form action="/muestras/borrar" method="post" class="pie"><button type="submit" class="sec">Borrar todo el historial</button></form>
+    <% } %>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
