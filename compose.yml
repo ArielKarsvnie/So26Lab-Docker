@@ -1,0 +1,27 @@
+services:
+  solab-web:
+    build:
+      context: /solab-web
+    # TODO 1: que solab-web arranque solo cuando solab-db esté saludable (healthy)
+    # TODO 2: definir la variable de entorno NODE_ENV con el valor production
+    # TODO 3: publicar los puertos 3000 y 35729 del contenedor en los mismos puertos de su computadora
+    develop:
+      watch:
+        - path: ./solab-web/package.json
+          action: rebuild
+        - path: ./solab-web
+          target: /usr/src/solab-web
+          action: sync
+          ignore:
+            - node_modules/
+  solab-db:
+    # TODO 4: usar la imagen pública mongo en su versión 6
+    # TODO 5: montar el volumen con nombre mongo-data en /data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+# TODO 6: declarar el volumen con nombre mongo-data
