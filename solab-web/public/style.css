@@ -55,7 +55,7 @@ main {
 }
 .ancha { grid-column: 1 / -1; }
 
-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 12px 0 0; }
+dl { display: grid; grid-template-columns: minmax(0, 1fr) fit-content(60%); gap: 6px 14px; margin: 12px 0 0; }
 dt { color: var(--suave); }
 dd { margin: 0; word-break: break-word; }
 
