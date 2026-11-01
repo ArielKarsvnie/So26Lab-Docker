@@ -1,7 +1,7 @@
 # Argumentos utilizados por docker build
 ARG NODE_VERSION=22
 # TODO 1: elegir la imagen base (Node en su variante alpine, usando el argumento NODE_VERSION)
-FROM ______
+FROM node:${NODE_VERSION}-alpine
 # Variables de entorno
 ENV NODE_ENV=production
 # TODO 2: fijar el directorio de trabajo dentro de la imagen
